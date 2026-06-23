@@ -55,6 +55,24 @@ export function createPaymentConfig(avmAddress: string): EndpointConfig {
     },
 
     /**
+     * MEME GENERATOR - AI-powered meme generation
+     * Uses Hugging Face API with custom RAG layer
+     * Users pay 0.1 USDC per meme generation
+     */
+    'POST /meme-generate': {
+      accepts: [
+        {
+          scheme: 'exact',
+          price: '$0.1', // 0.1 USDC per meme
+          network: ALGORAND_TESTNET_CAIP2,
+          payTo: avmAddress,
+          extra: { asset: Number(USDC_TESTNET_ASA_ID) },
+        },
+      ],
+      description: 'AI Meme Generator with RAG - Pay $0.1 USDC per image',
+    },
+
+    /**
      * EXAMPLE 2: Premium Analytics
      * Users pay for detailed analytics or reports
      * Idea: Portfolio analytics, trading stats, DeFi analytics
