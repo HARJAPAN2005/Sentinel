@@ -381,20 +381,20 @@ async function addTextOverlay(
  */
 const AI_MODELS = {
   primary: {
-    name: 'black-forest-labs/FLUX.1-schnell',
-    description: 'Fast, high quality image generation',
-    steps: 4,
-    guidance: 0,
+    name: 'stabilityai/stable-diffusion-xl-base-1.0',
+    description: 'High quality, detailed images (SDXL)',
+    steps: 20,
+    guidance: 7.5,
   },
   fallback: {
-    name: 'stabilityai/stable-diffusion-xl-base-1.0',
-    description: 'High quality, detailed images',
+    name: 'stabilityai/stable-diffusion-2-1',
+    description: 'Stable Diffusion 2.1',
     steps: 20,
     guidance: 7.5,
   },
   creative: {
-    name: 'runwayml/stable-diffusion-v1-5',
-    description: 'Classic stable diffusion',
+    name: 'prompthero/openjourney-v4',
+    description: 'Midjourney-style creative images',
     steps: 25,
     guidance: 7.5,
   },
@@ -464,7 +464,7 @@ async function callHuggingFaceModel(
   steps: number,
   guidance: number
 ): Promise<string> {
-  const HF_API_URL = `https://router.huggingface.co/hf-inference/models/${modelName}`;
+  const HF_API_URL = `https://api-inference.huggingface.co/models/${modelName}`;
   
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 45000);

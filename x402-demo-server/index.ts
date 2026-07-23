@@ -17,8 +17,10 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { paymentMiddleware } from '@x402/hono';
 import { x402ResourceServer, HTTPFacilitatorClient } from '@x402/core/server';
+import type { ResourceServerExtension } from '@x402/core/types';
 import { ExactAvmScheme } from '@x402/avm/exact/server';
 import { ALGORAND_TESTNET_CAIP2 } from '@x402/avm';
+import { bazaarResourceServerExtension } from '@x402-avm/extensions';
 
 // Import handler functions
 import { handleWeatherRequest } from './handlers/weather';
@@ -70,11 +72,9 @@ console.log('═'.repeat(60) + '\n');
 
 // Initialize x402 Resource Server
 const facilitatorClient = new HTTPFacilitatorClient({ url: facilitatorUrl });
-const x402Server = new x402ResourceServer(facilitatorClient);
-
-// Register payment scheme for TestNet
-const avmServerScheme = new ExactAvmScheme();
-x402Server.register(ALGORAND_TESTNET_CAIP2, avmServerScheme);
+const x402Server = new x402ResourceServer(facilitatorClient)
+  .register(ALGORAND_TESTNET_CAIP2, new ExactAvmScheme())
+  .registerExtension(bazaarResourceServerExtension as unknown as ResourceServerExtension);
 
 // Create Hono app
 const app = new Hono();

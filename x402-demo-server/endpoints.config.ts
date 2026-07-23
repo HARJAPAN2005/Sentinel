@@ -12,6 +12,7 @@
  */
 
 import { ALGORAND_TESTNET_CAIP2, USDC_TESTNET_ASA_ID } from '@x402/avm';
+import { declareDiscoveryExtension } from '@x402-avm/extensions';
 
 // Type definition for endpoints
 export interface EndpointConfig {
@@ -24,6 +25,7 @@ export interface EndpointConfig {
       extra: { asset: number };
     }>;
     description: string;
+    extensions?: Record<string, unknown>;
   };
 }
 
@@ -45,13 +47,25 @@ export function createPaymentConfig(avmAddress: string): EndpointConfig {
       accepts: [
         {
           scheme: 'exact',
-          price: '$0.005', // Change this price
+          price: '$0.005',
           network: ALGORAND_TESTNET_CAIP2,
           payTo: avmAddress,
           extra: { asset: Number(USDC_TESTNET_ASA_ID) },
         },
       ],
       description: 'Weather data access - Pay $0.005 USDC',
+      extensions: declareDiscoveryExtension({
+        output: {
+          example: {
+            city: 'San Francisco',
+            temperature: 64,
+            condition: 'Partly Cloudy',
+            humidity: 72,
+            timestamp: '2026-06-15T16:00:00.000Z',
+            paidVia: 'x402 / USDC Algorand Testnet',
+          },
+        },
+      }),
     },
 
     /**
@@ -63,13 +77,31 @@ export function createPaymentConfig(avmAddress: string): EndpointConfig {
       accepts: [
         {
           scheme: 'exact',
-          price: '$0.1', // 0.1 USDC per meme
+          price: '$0.1',
           network: ALGORAND_TESTNET_CAIP2,
           payTo: avmAddress,
           extra: { asset: Number(USDC_TESTNET_ASA_ID) },
         },
       ],
       description: 'AI Meme Generator with RAG - Pay $0.1 USDC per image',
+      extensions: declareDiscoveryExtension({
+        bodyType: 'json',
+        input: { topic: 'blockchain', style: 'funny' },
+        inputSchema: {
+          properties: {
+            topic: { type: 'string' },
+            style: { type: 'string' },
+          },
+          required: ['topic'],
+        },
+        output: {
+          example: {
+            imageUrl: 'https://example.com/meme.png',
+            caption: 'When your smart contract finally deploys',
+            paidVia: 'x402 / USDC Algorand Testnet',
+          },
+        },
+      }),
     },
 
     /**
