@@ -33,6 +33,7 @@ import {
   handleCreatorPublishRequest,
   handleCreatorEarningsRequest,
 } from './handlers/creator-content';
+import { handleMemeGenerateRequest, handleMemeStylesRequest } from './handlers/meme-generator';
 
 // Import endpoint configuration
 import createPaymentConfig, { EndpointConfig } from './endpoints.config';
@@ -156,6 +157,10 @@ app.use(paymentMiddleware(paymentConfig as any, x402Server));
 // Example 1: Weather Data - Pay $0.005
 app.get('/weather', handleWeatherRequest);
 
+// Meme Generator - Pay $0.1 USDC (Payment Protected)
+app.post('/meme-generate', handleMemeGenerateRequest);
+
+
 // Example 2: Analytics - Uncomment to enable
 // app.get('/analytics', handleAnalyticsRequest);
 // app.post('/analytics/report', handleAnalyticsReportRequest);
@@ -200,6 +205,12 @@ app.get('/info', (c) => {
     documentation: 'See README.md in project root',
   });
 });
+
+/**
+ * Meme Styles endpoint - Shows available styles and themes
+ * Public endpoint - no payment required
+ */
+app.get('/meme-styles', handleMemeStylesRequest);
 
 // ════════════════════════════════════════════════════════════════════
 // ERROR HANDLING
