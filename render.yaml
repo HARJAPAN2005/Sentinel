@@ -2,7 +2,7 @@ services:
   - type: web
     name: sentinel-backend
     env: node
-    rootDir: sentinel-app/x402-demo-server
+    rootDir: x402-demo-server
     buildCommand: npm install
     startCommand: npm start
     envVars:
