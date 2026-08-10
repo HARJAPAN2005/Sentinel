@@ -16,19 +16,19 @@
 
 ---
 
-## The Problem
+## 🛑 The Problem
 
 AI agents that use x402 to call paid APIs face an unresolved control problem:
 
-```
-┌────────────────────────────────────────────────────────────┐
-│                    WITHOUT SENTINEL                         │
-│                                                            │
-│  Agent  ──────────► API  ──► 402 Challenge  ──► Wallet    │
-│                                                   │        │
-│                         (was this appropriate?)   ▼        │
-│                                               Signs Anyway  │
-└────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    A[Agent] -->|x402 Request| B(API)
+    B -->|402 Challenge| W[Wallet]
+    W -.->|Signs Anyway?| B
+    
+    style A fill:#12161C,stroke:#6B6A5F,color:#E7E4D8,stroke-width:2px
+    style B fill:#12161C,stroke:#6B6A5F,color:#E7E4D8,stroke-width:2px
+    style W fill:#A9412C,stroke:#12161C,color:#E7E4D8,stroke-width:2px
 ```
 
 **Who decides what the agent is allowed to pay for?**  
@@ -39,29 +39,21 @@ Sentinel answers all three.
 
 ---
 
-## The Solution
+## ⚡ The Solution
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                        WITH SENTINEL                               │
-│                                                                    │
-│  Agent ──► Sentinel Guard ──────► BLOCKED (403)                   │
-│                │                   No wallet prompt.               │
-│                │                   No transaction.                 │
-│                │                   No explorer link possible.      │
-│                │                                                   │
-│                └──────────────► APPROVED ──► 402 Challenge        │
-│                                               │                    │
-│                                               ▼                    │
-│                                          Wallet Signs              │
-│                                               │                    │
-│                                               ▼                    │
-│                                    GoPlausible Facilitator         │
-│                                               │                    │
-│                                               ▼                    │
-│                                    USDC Settled on Algorand ✓      │
-│                                    txId + Explorer Link            │
-└────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    A[Agent] -->|Request| SG{Sentinel Guard}
+    SG -->|BLOCKED 🚫| R1[403 Forbidden<br>No Wallet Prompt<br>No txId Possible]
+    SG -->|APPROVED ✅| C[402 Challenge]
+    C --> W[Wallet Signs]
+    W --> F[GoPlausible Facilitator]
+    F --> S[USDC Settled on Algorand]
+    
+    style A fill:#12161C,stroke:#6B6A5F,color:#E7E4D8,stroke-width:2px
+    style SG fill:#12161C,stroke:#C98A3E,color:#E7E4D8,stroke-width:2px
+    style R1 fill:#A9412C,stroke:#12161C,color:#E7E4D8,stroke-width:2px
+    style S fill:#3C5A78,stroke:#12161C,color:#E7E4D8,stroke-width:2px
 ```
 
 The critical insight: **denied requests never become payment challenges.**  
@@ -69,76 +61,56 @@ The Algorand explorer shows nothing for blocked calls — because nothing happen
 
 ---
 
-## Architecture
+## 🏗 Architecture
 
 ### Middleware Stack
 
-```
-Incoming Request
-      │
-      ▼
-┌─────────────┐
-│    CORS     │  Allow browser access, expose payment headers
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐
-│   Logger    │  Timestamp, method, path, payment-signature detection
-└──────┬──────┘
-       │
-       ▼
-┌─────────────────────────────────────────────────────┐
-│              SENTINEL GUARD  ◄── runs first          │
-│                                                      │
-│  ① Endpoint allowlisted?                            │
-│     NO  ──► 403 + policyTrace + event logged        │
-│     YES ──► continue                                │
-│                                                      │
-│  ② Budget available?                                │
-│     NO  ──► 403 + policyTrace + event logged        │
-│     YES ──► continue                                │
-│                                                      │
-│  ③ Trust score acceptable?                          │
-│     NO  ──► 403 + policyTrace + event logged        │
-│     YES ──► next()                                  │
-└──────────────────────┬──────────────────────────────┘
-                       │ APPROVED
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│           x402 PAYMENT MIDDLEWARE                    │
-│                                                      │
-│  First visit?  ──► Return 402 with payment terms    │
-│  Has payment?  ──► Verify with GoPlausible          │
-│  Verified?     ──► next()                           │
-└──────────────────────┬──────────────────────────────┘
-                       │ PAYMENT VERIFIED
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│              ROUTE HANDLER                           │
-│  Record payment settled, return response + txId     │
-└─────────────────────────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant C as Client Request
+    participant CORS as CORS & Preflight
+    participant L as Logger
+    participant SG as Sentinel Guard
+    participant X as x402 Middleware
+    participant RH as Route Handler
+
+    C->>CORS: Request
+    CORS->>L: Pass
+    L->>SG: Logged
+    
+    rect rgb(30, 35, 42)
+    Note over SG: 1. Endpoint Allowlisted?<br>2. Budget Available?<br>3. Trust Score Acceptable?
+    end
+    
+    alt Policy Failed
+        SG-->>C: 403 Forbidden (Blocked)
+    else Policy Passed
+        SG->>X: Approved
+        X->>RH: Payment Verified
+        RH-->>C: Response + txId
+    end
 ```
 
 ### Policy Engine
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  SENTINEL POLICY                     │
-│                                                      │
-│  Agent ID:       demo-agent-1                        │
-│  Task Budget:    $0.015  (safe) / $0.040  (full)    │
-│  Spent:          tracks per settlement               │
-│  Remaining:      budget - spent                      │
-│  Trust Score:    70/100  (dynamic)                   │
-│  Allowlist:      [guardrail-check, cold-email]       │
-│                                                      │
-│  Score Changes:                                      │
-│  ┌──────────────────────────────────┐               │
-│  │  Settlement approved   →  +2     │               │
-│  │  Budget exceeded       →  -8     │               │
-│  │  Not allowlisted       →  -10    │               │
-│  └──────────────────────────────────┘               │
-└─────────────────────────────────────────────────────┘
+```mermaid
+classDiagram
+    class SentinelPolicy {
+        +String agentId: "demo-agent-1"
+        +Number taskBudget: $0.015 (safe)
+        +Number spent: Tracks per settlement
+        +Number remaining: Budget - Spent
+        +Number trustScore: 70/100
+        +List allowlist: [guardrail-check, cold-email]
+    }
+    
+    class ScoreChanges {
+        +Settlement approved: +2
+        +Budget exceeded: -8
+        +Not allowlisted: -10
+    }
+    
+    SentinelPolicy --> ScoreChanges : Adjusts Dynamically
 ```
 
 ### Event Audit Trail (Every Request Logged)
@@ -162,43 +134,7 @@ type SentinelEvent = {
 
 ---
 
-## Live Demo Flow
-
-```
-DEMO START ─────────────────────────────────────────────────────►
-
- Step 1: POST /guardrail-check  ($0.01)
- ┌────────────────────────────────────────────────────────────┐
- │  Policy check:  allowlisted ✓  budget ok ✓  score ok ✓    │
- │  x402:          402 sent → wallet signs → facilitator ok   │
- │  On-chain:      USDC transfer EXISTS on Algorand TestNet   │
- │  Result:        SETTLED ✓   txId: <click to view>         │
- │  Budget:        $0.015 → $0.005 remaining                  │
- │  Trust:         70 → 72                                    │
- └────────────────────────────────────────────────────────────┘
-
- Step 2: POST /cold-email  ($0.02)
- ┌────────────────────────────────────────────────────────────┐
- │  Policy check:  allowlisted ✓  budget FAIL ✗               │
- │                 need $0.020, have $0.005                   │
- │  x402:          never reached                              │
- │  On-chain:      NO TRANSACTION (nothing to find)           │
- │  Result:        BLOCKED 🚫  paymentCreated: false          │
- │  Trust:         72 → 64                                    │
- └────────────────────────────────────────────────────────────┘
-
- Step 3: POST /premium-research  ($0.05)
- ┌────────────────────────────────────────────────────────────┐
- │  Policy check:  allowlisted FAIL ✗                         │
- │                 endpoint not on allowlist                  │
- │  x402:          never reached                              │
- │  On-chain:      NO TRANSACTION (nothing to find)           │
- │  Result:        BLOCKED 🚫  paymentCreated: false          │
- │  Trust:         64 → 54                                    │
- └────────────────────────────────────────────────────────────┘
-
-DEMO END ── Final state: 1 on-chain proof, 2 preventions ───────►
-```
+## 🎮 Live Demo Flow
 
 ### The Hero Proof
 
@@ -220,41 +156,31 @@ Algorand TestNet Explorer
 
 ---
 
-## Guardrail Risk Engine
+## 🛡️ Guardrail Risk Engine
 
-```
-Input Prompt
-     │
-     ▼
-┌────────────────────────────────────────────────────┐
-│              PATTERN MATCHING ENGINE               │
-│                                                    │
-│  instruction_override  ──── weight 32              │
-│  "ignore previous instructions..."                 │
-│                                                    │
-│  secret_extraction  ──────── weight 30             │
-│  "reveal system prompt / private key..."           │
-│                                                    │
-│  policy_bypass  ───────────── weight 26            │
-│  "bypass safety limits..."                         │
-│                                                    │
-│  tool_abuse  ─────────────── weight 24             │
-│  "purchase without approval..."                    │
-│                                                    │
-│  jailbreak_attempt  ──────── weight 22             │
-│  "developer mode / DAN mode..."                    │
-└────────────────────┬───────────────────────────────┘
-                     │
-                     ▼
-              Score = 12 + Σ(matched weights)
-                     │
-          ┌──────────┼──────────┐
-          │          │          │
-        < 40       40-70      ≥ 70
-          │          │          │
-         LOW      MEDIUM      HIGH
-          │          │          │
-        allow      review   block_or_review
+```mermaid
+graph TD
+    P[Input Prompt] --> E[Pattern Matching Engine]
+    
+    E -->|Weight 32| O[instruction_override]
+    E -->|Weight 30| S[secret_extraction]
+    E -->|Weight 26| B[policy_bypass]
+    E -->|Weight 24| T[tool_abuse]
+    E -->|Weight 22| J[jailbreak_attempt]
+    
+    O --> R{Score = 12 + Σ}
+    S --> R
+    B --> R
+    T --> R
+    J --> R
+    
+    R -->|< 40| L[LOW: allow]
+    R -->|40 - 70| M[MEDIUM: review]
+    R -->|> 70| H[HIGH: block_or_review]
+    
+    style H fill:#A9412C,stroke:#12161C,color:#E7E4D8
+    style M fill:#C98A3E,stroke:#12161C,color:#E7E4D8
+    style L fill:#3C5A78,stroke:#12161C,color:#E7E4D8
 ```
 
 Demo prompt triggers: `instruction_override` + `secret_extraction` + `tool_abuse`  
@@ -262,7 +188,7 @@ Demo prompt triggers: `instruction_override` + `secret_extraction` + `tool_abuse
 
 ---
 
-## Project Structure
+## 📂 Project Structure
 
 ```
 sentinel-app/
@@ -281,7 +207,7 @@ sentinel-app/
 │   ├── index.ts                         # App entry, middleware ordering
 │   └── .env.example                     # Required env vars (safe to commit)
 │
-└── X402-Usecase/projects/X402-Usecase/  # React + Vite Frontend
+└── X402-Usecase/projects/X402-Usecase/  # React + Vite Frontend (Framer Motion UI)
     └── src/
         ├── components/
         │   └── SentinelDashboard.tsx    # Full agent console UI
@@ -294,7 +220,7 @@ sentinel-app/
 
 ---
 
-## API Reference
+## 🔌 API Reference
 
 ### Sentinel-Protected Endpoints
 
@@ -323,7 +249,7 @@ sentinel-app/
 
 ---
 
-## Quickstart
+## 🚀 Quickstart
 
 ### Prerequisites
 
@@ -350,12 +276,6 @@ cp .env.example .env
 npm start
 ```
 
-```bash
-# Verify:
-curl http://localhost:4021/health
-# → {"status":"ok","service":"x402-hackathon-starter","uptime":...}
-```
-
 ### 3. Frontend
 
 ```bash
@@ -379,7 +299,7 @@ Open **http://localhost:5173**
 
 ---
 
-## Demo Modes
+## ⚙️ Demo Modes
 
 | Mode | Budget | `/guardrail-check` | `/cold-email` | `/premium-research` |
 |:---:|:---:|:---:|:---:|:---:|
@@ -390,7 +310,7 @@ Switch modes live via the toggle in the dashboard header — resets budget + eve
 
 ---
 
-## Tech Stack
+## 🛠 Tech Stack
 
 | Layer | Technology | Version |
 |:---|:---|:---:|
@@ -398,26 +318,26 @@ Switch modes live via the toggle in the dashboard header — resets budget + eve
 | Network | Algorand TestNet | — |
 | Settlement | USDC (ASA `10458941`) via GoPlausible | — |
 | Backend | Hono + TypeScript + Node.js | Hono 4.x |
-| Frontend | React 18 + Vite + TypeScript | Vite 5.x |
+| Frontend | React 18 + Vite + Tailwind + Framer Motion | Vite 5.x |
 | Wallet | Lute + `@txnlab/use-wallet-react` | v4.x |
 | Explorer | [Lora by AlgoKit](https://lora.algokit.io/testnet) | — |
 
 ---
 
-## Security Scope
+## 🛡️ Security Scope
 
 Sentinel enforces security at the **resource server middleware layer**:
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    SECURITY LAYERS                           │
-│                                                              │
-│  Protocol Layer     ── x402 + GoPlausible (replay, verify)  │
-│  ───────────────────────────────────────────────────────── │
-│  ▶ Sentinel Layer   ── Allowlist, budget, trust score       │
-│  ───────────────────────────────────────────────────────── │
-│  Application Layer  ── Business logic, rate limiting        │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph LR
+    P[Protocol Layer<br>x402 + GoPlausible]
+    S[Sentinel Layer<br>Allowlist, Budget, Trust]
+    A[Application Layer<br>Business Logic]
+    
+    P --> S
+    S --> A
+    
+    style S fill:#C98A3E,stroke:#12161C,color:#12161C,stroke-width:2px
 ```
 
 **What Sentinel guarantees:**
@@ -433,7 +353,7 @@ Sentinel enforces security at the **resource server middleware layer**:
 
 ---
 
-## Mainnet Deployment
+## 🌍 Mainnet Deployment
 
 Two config changes for production:
 
@@ -453,7 +373,7 @@ All policy logic, middleware ordering, and audit trail are identical in both env
 
 ---
 
-## One-Line Pitch
+## 🎤 One-Line Pitch
 
 > *"Sentinel is the policy firewall for AI agent payments — it doesn't just let agents pay for APIs, it decides whether they're allowed to pay before a single wallet signature is ever requested."*
 

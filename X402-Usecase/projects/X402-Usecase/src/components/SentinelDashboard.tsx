@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import type { Variants } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useWallet } from '@txnlab/use-wallet-react'
 import {
   callColdEmail,
@@ -24,6 +26,7 @@ type Step = {
   purpose: string
   state: LedgerState
   detail: string
+  latencyMs?: number
   response?: any
 }
 
@@ -71,6 +74,20 @@ function getExplorerUrl(txId?: string) {
   return txId ? `${EXPLORER_BASE}/${txId}` : ''
 }
 
+// Panel entrance stagger: 80ms × panel number (1-indexed), sharp ease-out
+const panelVariants: Variants = {
+  hidden: { opacity: 0, y: -10 },
+  visible: (panelNum: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: (panelNum - 1) * 0.08,
+      duration: 0.24,
+      ease: 'easeOut', // sharp ease-out, no drift
+    },
+  }),
+}
+
 const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnectWallet }) => {
   const { activeAddress, activeWallet, signTransactions } = useWallet()
   const [steps, setSteps] = useState<Step[]>(initialSteps)
@@ -93,9 +110,7 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
     }
   }
 
-  useEffect(() => {
-    loadStatus()
-  }, [])
+  useEffect(() => { loadStatus() }, [])
 
   const updateStep = (id: string, patch: Partial<Step>) => {
     setSteps((cur) => cur.map((s) => (s.id === id ? { ...s, ...patch } : s)))
@@ -104,22 +119,15 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
   const handleReset = async () => {
     setError('')
     setSteps(initialSteps)
-    try {
-      setStatus(await resetSentinel())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not reset Sentinel state')
-    }
+    try { setStatus(await resetSentinel()) }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not reset Sentinel state') }
   }
 
   const handleDisconnect = async () => {
     setError('')
     clearAllWalletSessions()
     if (activeWallet && typeof activeWallet.disconnect === 'function') {
-      try {
-        await activeWallet.disconnect()
-      } catch {
-        /* ignore */
-      }
+      try { await activeWallet.disconnect() } catch { /* ignore */ }
     }
     window.location.reload()
   }
@@ -142,23 +150,27 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
     await pause(400)
     updateStep(id, { state: 'signing', detail: 'Sentinel approved — awaiting wallet signature via x402...' })
 
+    const t0 = Date.now()
     const result = await fn(signer)
+    const latencyMs = Date.now() - t0
     const body = result.data
 
     if (result.status === 403) {
       updateStep(id, {
         state: 'blocked',
+        latencyMs,
         detail: `${body.reason || 'Blocked by Sentinel policy'} — no wallet challenge created`,
         response: body,
       })
     } else if (result.ok) {
       updateStep(id, {
         state: 'settled',
+        latencyMs,
         detail: `${label} verified & settled on Algorand TestNet`,
         response: body,
       })
     } else {
-      updateStep(id, { state: 'failed', detail: `Network/Protocol error: HTTP ${result.status}`, response: body })
+      updateStep(id, { state: 'failed', latencyMs, detail: `Network/Protocol error: HTTP ${result.status}`, response: body })
     }
 
     if (body?.sentinel) setStatus(body.sentinel)
@@ -189,23 +201,32 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
     }
   }
 
-  const policy = status?.policy
-  const events = status?.events || []
+  const policy   = status?.policy
+  const events   = status?.events || []
   const taskBudget = policy?.taskBudgetMicroUsdc ?? 15000
-  const spent = policy?.spentMicroUsdc ?? 0
-  const remaining = policy?.remainingBudgetMicroUsdc ?? taskBudget
+  const spent      = policy?.spentMicroUsdc ?? 0
+  const remaining  = policy?.remainingBudgetMicroUsdc ?? taskBudget
   const trustScore = policy?.trustScore ?? 70
   const allowlist: string[] = policy?.allowlistedEndpoints || ['guardrail-check', 'cold-email']
 
-  const settledEvents = events.filter((e: any) => e.settled)
-  const blockedEvents = events.filter((e: any) => !e.settled)
+  // Circuit Trace: build list of resolved steps + compute stack index for depth
+  const resolvedSteps = steps.filter((s) => s.state === 'settled' || s.state === 'blocked')
+  const lastResolvedId = resolvedSteps[resolvedSteps.length - 1]?.id
+
+  const researchStep = steps.find((s) => s.id === 'research')
 
   return (
     <main className="min-h-screen bg-ink-navy text-paper p-4 md:p-8 font-body">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Top Header & Auditor Stamp Banner */}
-        <header className="border-b border-graphite/40 pb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        {/* ── HEADER ── */}
+        <motion.header
+          custom={0}
+          initial="hidden"
+          animate="visible"
+          variants={panelVariants}
+          className="border-b border-graphite/40 pb-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6"
+        >
           <div>
             <div className="flex items-center gap-3 mb-1">
               <span className="font-ledger text-xs uppercase tracking-widest text-brass border border-brass/40 px-2 py-0.5">
@@ -230,16 +251,13 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
                 onClick={handleDemoModeToggle}
                 disabled={running}
                 className={`font-mono uppercase font-bold px-2 py-0.5 border ${
-                  demoModeState === 'safe'
-                    ? 'border-brass text-brass'
-                    : 'border-settle-blue text-settle-blue'
+                  demoModeState === 'safe' ? 'border-brass text-brass' : 'border-settle-blue text-settle-blue'
                 }`}
               >
                 {demoModeState === 'safe' ? 'SAFE (1 SETTLE / 2 BLOCKS)' : 'FULL (2 SETTLES / 1 BLOCK)'}
               </button>
             </div>
 
-            {/* Wallet Connect */}
             <DepressButton
               label={activeAddress ? `${activeAddress.slice(0, 6)}...${activeAddress.slice(-4)}` : 'CONNECT WALLET'}
               onClick={onConnectWallet}
@@ -248,7 +266,6 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
             {activeAddress && (
               <DepressButton label="DISCONNECT" onClick={handleDisconnect} disabled={running} variant="danger" />
             )}
-
             <DepressButton label="RESET" onClick={handleReset} disabled={running} variant="secondary" />
             <DepressButton
               label={running ? 'EXECUTING...' : 'RUN AGENT TASK'}
@@ -257,9 +274,9 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
               variant="primary"
             />
           </div>
-        </header>
+        </motion.header>
 
-        {/* Error Notification */}
+        {/* Error Banner */}
         {error && (
           <div className="border border-block-red bg-block-red/10 p-3 text-xs font-ledger text-block-red flex justify-between items-center">
             <span>ERROR :: {error}</span>
@@ -267,18 +284,17 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
           </div>
         )}
 
-        {/* Main 3-Column Ledger Grid */}
+        {/* ── MAIN GRID ── */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-          {/* COLUMN 1: Policy & Rail Controls (3 cols) */}
+          {/* COLUMN 1: Policy + Breaker Rail (4 cols) */}
           <div className="lg:col-span-4 space-y-6">
 
-            {/* Ledger Policy Panel */}
-            <div className="panel p-5 space-y-4">
+            {/* Panel 01: Spend Policy Parameters */}
+            <motion.div custom={1} initial="hidden" animate="visible" variants={panelVariants} className="panel p-5 space-y-4">
               <h2 className="font-display font-bold text-sm text-graphite uppercase tracking-widest border-b border-graphite/30 pb-2">
                 01. Spend Policy Parameters
               </h2>
-
               <div className="space-y-3 font-ledger text-xs">
                 <div className="flex justify-between items-center hairline pb-2">
                   <span className="text-graphite">TASK BUDGET</span>
@@ -292,8 +308,7 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
                   <span className="text-graphite">REMAINING CREDIT</span>
                   <span className="font-bold text-settle-blue text-sm">{formatMicro(remaining)}</span>
                 </div>
-
-                {/* Trust Score Rating */}
+                {/* Trust Score — hard bar, no rounded edges */}
                 <div className="pt-2">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-graphite">TRUST SCORE RATING</span>
@@ -309,10 +324,10 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
-            {/* Breaker Switch Panel (Hero Component #3) */}
-            <div className="panel p-5 space-y-4">
+            {/* Panel 02: Allowlist Breaker Rail */}
+            <motion.div custom={2} initial="hidden" animate="visible" variants={panelVariants} className="panel p-5 space-y-4">
               <h2 className="font-display font-bold text-sm text-graphite uppercase tracking-widest border-b border-graphite/30 pb-2">
                 02. Allowlist Breaker Rail
               </h2>
@@ -325,36 +340,33 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
                 <BreakerSwitch
                   label="premium-research"
                   on={false}
-                  tripped={steps.find((s) => s.id === 'research')?.state === 'blocked'}
+                  tripped={researchStep?.state === 'blocked'}
                 />
               </div>
-            </div>
+            </motion.div>
 
-            {/* Middleware Stack Proof */}
-            <div className="panel p-4 font-ledger text-xs text-graphite space-y-2">
-              <div className="text-paper font-bold uppercase">Middleware Stack Execution Order:</div>
+            {/* Middleware Stack — not numbered (it's reference, not a panel) */}
+            <motion.div custom={3} initial="hidden" animate="visible" variants={panelVariants} className="panel p-4 font-ledger text-xs text-graphite space-y-2">
+              <div className="text-paper font-bold uppercase">Middleware Stack Order:</div>
               <div className="space-y-1 border-l border-graphite/30 pl-3">
-                <div>1. CORS & Preflight</div>
+                <div>1. CORS &amp; Preflight</div>
                 <div>2. Request Logger</div>
                 <div className="text-block-red font-bold">3. SENTINEL GUARD (Policy Check)</div>
                 <div>4. x402 Payment Middleware</div>
                 <div>5. Route Handler</div>
               </div>
-            </div>
-
+            </motion.div>
           </div>
 
-          {/* COLUMN 2: Workflow Sequence Ledger (5 cols) */}
+          {/* COLUMN 2: Payment Execution Sequence (5 cols) */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="panel p-5 space-y-4">
+            <motion.div custom={3} initial="hidden" animate="visible" variants={panelVariants} className="panel p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-graphite/30 pb-2">
                 <h2 className="font-display font-bold text-sm text-graphite uppercase tracking-widest">
                   03. Payment Execution Sequence
                 </h2>
                 <span className="font-ledger text-xs text-brass">LIVE CHRONOLOGY</span>
               </div>
-
-              {/* Ledger Line Rows */}
               <div className="space-y-1">
                 {steps.map((step, idx) => (
                   <LedgerRow
@@ -373,44 +385,49 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
                   />
                 ))}
               </div>
-            </div>
+            </motion.div>
           </div>
 
-          {/* COLUMN 3: Current Trace & Audit Proof (3 cols) */}
+          {/* COLUMN 3: Circuit Trace + Audit Trail (3 cols) */}
           <div className="lg:col-span-3 space-y-6">
 
-            {/* Hero Component #4: Current Trace Circuit Box */}
-            <div className="panel p-4 space-y-3">
+            {/* Panel 04: Circuit Trace — 3D depth stack */}
+            <motion.div custom={4} initial="hidden" animate="visible" variants={panelVariants} className="panel p-4 space-y-2">
               <h2 className="font-display font-bold text-sm text-graphite uppercase tracking-widest border-b border-graphite/30 pb-2">
                 04. Circuit Trace
               </h2>
 
-              {steps.some((s) => s.state === 'settled' || s.state === 'blocked') ? (
-                steps
-                  .filter((s) => s.state === 'settled' || s.state === 'blocked')
-                  .map((s) => (
+              {resolvedSteps.length === 0 ? (
+                <p className="font-ledger text-xs text-graphite py-4 text-center">
+                  Execute task sequence to observe real-time circuit trace.
+                </p>
+              ) : (
+                // Stacked depth: first resolved = deepest (index 0), last = active (pops forward)
+                // We reverse so latest is on top in DOM order, then use stackIndex from bottom
+                resolvedSteps.map((s, i) => {
+                  const stackIndex = resolvedSteps.length - 1 - i   // 0 = active (last resolved)
+                  const isActive   = s.id === lastResolvedId
+                  return (
                     <CurrentTrace
                       key={s.id}
                       state={s.state as 'settled' | 'blocked'}
                       endpoint={s.endpoint}
                       reason={s.response?.reason}
-                      txId={s.response?.receipt?.txId || s.response?.event?.txId}
                       explorerUrl={getExplorerUrl(s.response?.receipt?.txId || s.response?.event?.txId)}
+                      latencyMs={s.latencyMs}
+                      isActive={isActive}
+                      stackIndex={stackIndex}
                     />
-                  ))
-              ) : (
-                <p className="font-ledger text-xs text-graphite py-4 text-center">
-                  Execute task sequence to observe real-time circuit trace.
-                </p>
+                  )
+                })
               )}
-            </div>
+            </motion.div>
 
-            {/* Audit Log / Hand-stamped Ledger Box */}
-            <div className="panel p-4 space-y-3">
+            {/* Panel 05: Audit Trail Ledger */}
+            <motion.div custom={5} initial="hidden" animate="visible" variants={panelVariants} className="panel p-4 space-y-3">
               <h2 className="font-display font-bold text-sm text-graphite uppercase tracking-widest border-b border-graphite/30 pb-2">
                 05. Audit Trail Ledger
               </h2>
-
               {events.length === 0 ? (
                 <p className="font-ledger text-xs text-graphite">No stamped entries yet.</p>
               ) : (
@@ -436,10 +453,9 @@ const SentinelDashboard: React.FC<{ onConnectWallet: () => void }> = ({ onConnec
                   ))}
                 </div>
               )}
-            </div>
+            </motion.div>
 
           </div>
-
         </div>
 
         {/* Footer */}
