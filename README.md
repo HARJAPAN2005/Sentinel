@@ -1,109 +1,264 @@
-# 🛡️ Sentinel — Governed Pay-Per-Call for AI Agents
+# 🛡️ Sentinel
 
-> **The policy and audit layer for x402 agent payments on Algorand.**  
-> Not just pay-per-call. **Governed** pay-per-call.
+<div align="center">
 
-[![Algorand TestNet](https://img.shields.io/badge/Algorand-TestNet-00D4FF?logo=algorand)](https://testnet.algoexplorer.io)
-[![x402 Protocol](https://img.shields.io/badge/x402-Protocol-6B48FF)](https://x402.org)
-[![USDC](https://img.shields.io/badge/USDC-ASA%2010458941-2775CA)](https://www.circle.com/en/usdc)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+**The policy and audit layer for x402 agent payments on Algorand.**
 
----
+*Not just pay-per-call. **Governed** pay-per-call.*
 
-## What Is Sentinel?
+[![Algorand TestNet](https://img.shields.io/badge/Algorand-TestNet-00D4FF?style=for-the-badge&logo=algorand&logoColor=white)](https://testnet.algoexplorer.io)
+[![x402 Protocol](https://img.shields.io/badge/x402-Protocol-6B48FF?style=for-the-badge)](https://x402.org)
+[![USDC](https://img.shields.io/badge/USDC-ASA%2010458941-2775CA?style=for-the-badge)](https://www.circle.com/en/usdc)
+[![GoPlausible](https://img.shields.io/badge/Facilitator-GoPlausible-FF6B35?style=for-the-badge)](https://goplausible.xyz)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-Sentinel is an **agent spend policy firewall** built on top of the x402 payment protocol for Algorand.
-
-Every AI agent that calls paid APIs faces the same unresolved problem: **who decides what the agent is allowed to pay for?**
-
-Without Sentinel:
-```
-Agent Request → 402 Challenge → Wallet Signs → (hope it was appropriate)
-```
-
-With Sentinel:
-```
-Agent Request → Policy Check → DENIED (403, no payment created)
-                             → APPROVED → 402 → Wallet Signs → USDC Settled on Algorand
-```
-
-The critical difference: **denied requests never become payment challenges**. There is no wallet popup. There is no transaction. The Algorand explorer shows nothing — because nothing happened.
+</div>
 
 ---
 
-## Live Demo Flow
+## The Problem
 
-Click **Run Agent Task** and watch:
+AI agents that use x402 to call paid APIs face an unresolved control problem:
 
-| Step | Endpoint | Price | Result |
-|---|---|---|---|
-| 1 | `/guardrail-check` | $0.01 | ✅ **Settled** — real USDC payment on Algorand TestNet, explorer link provided |
-| 2 | `/cold-email` | $0.02 | 🚫 **Blocked** — would exceed $0.015 task budget, no payment created |
-| 3 | `/premium-research` | $0.05 | 🚫 **Blocked** — endpoint not in allowlist, no payment created |
+```
+┌────────────────────────────────────────────────────────────┐
+│                    WITHOUT SENTINEL                         │
+│                                                            │
+│  Agent  ──────────► API  ──► 402 Challenge  ──► Wallet    │
+│                                                   │        │
+│                         (was this appropriate?)   ▼        │
+│                                               Signs Anyway  │
+└────────────────────────────────────────────────────────────┘
+```
 
-**The hero proof:** Open the Algorand TestNet explorer. The guardrail-check USDC transfer exists. The cold-email and premium-research transfers do not exist — because Sentinel stopped them before they were ever created.
+**Who decides what the agent is allowed to pay for?**  
+**What prevents it from burning its entire budget on one bad call?**  
+**How do you prove, on-chain, that unsafe calls were stopped?**
+
+Sentinel answers all three.
+
+---
+
+## The Solution
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                        WITH SENTINEL                               │
+│                                                                    │
+│  Agent ──► Sentinel Guard ──────► BLOCKED (403)                   │
+│                │                   No wallet prompt.               │
+│                │                   No transaction.                 │
+│                │                   No explorer link possible.      │
+│                │                                                   │
+│                └──────────────► APPROVED ──► 402 Challenge        │
+│                                               │                    │
+│                                               ▼                    │
+│                                          Wallet Signs              │
+│                                               │                    │
+│                                               ▼                    │
+│                                    GoPlausible Facilitator         │
+│                                               │                    │
+│                                               ▼                    │
+│                                    USDC Settled on Algorand ✓      │
+│                                    txId + Explorer Link            │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+The critical insight: **denied requests never become payment challenges.**  
+The Algorand explorer shows nothing for blocked calls — because nothing happened.
 
 ---
 
 ## Architecture
 
-### Middleware Stack (Order Matters)
+### Middleware Stack
 
 ```
-CORS → Logger → Sentinel Guard → x402 Payment Middleware → Route Handler
-                    ↓
-              Policy Check
-              ├── Endpoint allowlisted?  NO → 403 BLOCKED (no payment created)
-              ├── Budget available?      NO → 403 BLOCKED (no payment created)
-              └── Trust score OK?       YES → x402 proceeds
-                                              ↓
-                                        402 Challenge sent to client
-                                              ↓
-                                        Client signs with wallet
-                                              ↓
-                                        GoPlausible Facilitator verifies
-                                              ↓
-                                        USDC settled on Algorand TestNet
-                                              ↓
-                                        200 + receipt + txId
+Incoming Request
+      │
+      ▼
+┌─────────────┐
+│    CORS     │  Allow browser access, expose payment headers
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│   Logger    │  Timestamp, method, path, payment-signature detection
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────────────────────────┐
+│              SENTINEL GUARD  ◄── runs first          │
+│                                                      │
+│  ① Endpoint allowlisted?                            │
+│     NO  ──► 403 + policyTrace + event logged        │
+│     YES ──► continue                                │
+│                                                      │
+│  ② Budget available?                                │
+│     NO  ──► 403 + policyTrace + event logged        │
+│     YES ──► continue                                │
+│                                                      │
+│  ③ Trust score acceptable?                          │
+│     NO  ──► 403 + policyTrace + event logged        │
+│     YES ──► next()                                  │
+└──────────────────────┬──────────────────────────────┘
+                       │ APPROVED
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│           x402 PAYMENT MIDDLEWARE                    │
+│                                                      │
+│  First visit?  ──► Return 402 with payment terms    │
+│  Has payment?  ──► Verify with GoPlausible          │
+│  Verified?     ──► next()                           │
+└──────────────────────┬──────────────────────────────┘
+                       │ PAYMENT VERIFIED
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│              ROUTE HANDLER                           │
+│  Record payment settled, return response + txId     │
+└─────────────────────────────────────────────────────┘
 ```
 
 ### Policy Engine
 
-```typescript
-// Every request evaluated before payment middleware
-evaluatePolicy(endpoint, priceMicroUsdc, agentId) → {
-  approved: boolean
-  reason: string
-  policyTrace: [
-    { label: 'Endpoint allowlisted', passed: boolean },
-    { label: 'Budget available',     passed: boolean, detail?: string },
-    { label: 'Trust score OK',       passed: boolean },
-  ]
-}
+```
+┌─────────────────────────────────────────────────────┐
+│                  SENTINEL POLICY                     │
+│                                                      │
+│  Agent ID:       demo-agent-1                        │
+│  Task Budget:    $0.015  (safe) / $0.040  (full)    │
+│  Spent:          tracks per settlement               │
+│  Remaining:      budget - spent                      │
+│  Trust Score:    70/100  (dynamic)                   │
+│  Allowlist:      [guardrail-check, cold-email]       │
+│                                                      │
+│  Score Changes:                                      │
+│  ┌──────────────────────────────────┐               │
+│  │  Settlement approved   →  +2     │               │
+│  │  Budget exceeded       →  -8     │               │
+│  │  Not allowlisted       →  -10    │               │
+│  └──────────────────────────────────┘               │
+└─────────────────────────────────────────────────────┘
 ```
 
-The trust score adjusts dynamically:
-- **+2** per approved and settled payment
-- **−8** per budget violation
-- **−10** per unapproved endpoint attempt
-
-### Event Audit Trail
-
-Every request — approved or blocked — is recorded:
+### Event Audit Trail (Every Request Logged)
 
 ```typescript
 type SentinelEvent = {
-  endpoint: string
-  decision: 'approved' | 'blocked'
-  reason: string
-  paymentChallengeCreated: boolean   // false for blocked
-  walletSignatureRequested: boolean  // false for blocked
-  settled: boolean                   // false for blocked
-  txId?: string                      // only for settled
-  explorerUrl?: string               // Lora testnet link
+  id:                       string    // evt-{timestamp}-{n}
+  timestamp:                string    // ISO 8601
+  agentId:                  string    // agent identity
+  endpoint:                 string    // which API was called
+  priceMicroUsdc:           number    // cost in microUSDC
+  decision:                 'approved' | 'blocked'
+  reason:                   string    // exact policy reason
+  paymentChallengeCreated:  boolean   // false for blocked
+  walletSignatureRequested: boolean   // false for blocked
+  settled:                  boolean   // false for blocked
+  txId?:                    string    // only for settled
+  explorerUrl?:             string    // Lora testnet link
 }
 ```
+
+---
+
+## Live Demo Flow
+
+```
+DEMO START ─────────────────────────────────────────────────────►
+
+ Step 1: POST /guardrail-check  ($0.01)
+ ┌────────────────────────────────────────────────────────────┐
+ │  Policy check:  allowlisted ✓  budget ok ✓  score ok ✓    │
+ │  x402:          402 sent → wallet signs → facilitator ok   │
+ │  On-chain:      USDC transfer EXISTS on Algorand TestNet   │
+ │  Result:        SETTLED ✓   txId: <click to view>         │
+ │  Budget:        $0.015 → $0.005 remaining                  │
+ │  Trust:         70 → 72                                    │
+ └────────────────────────────────────────────────────────────┘
+
+ Step 2: POST /cold-email  ($0.02)
+ ┌────────────────────────────────────────────────────────────┐
+ │  Policy check:  allowlisted ✓  budget FAIL ✗               │
+ │                 need $0.020, have $0.005                   │
+ │  x402:          never reached                              │
+ │  On-chain:      NO TRANSACTION (nothing to find)           │
+ │  Result:        BLOCKED 🚫  paymentCreated: false          │
+ │  Trust:         72 → 64                                    │
+ └────────────────────────────────────────────────────────────┘
+
+ Step 3: POST /premium-research  ($0.05)
+ ┌────────────────────────────────────────────────────────────┐
+ │  Policy check:  allowlisted FAIL ✗                         │
+ │                 endpoint not on allowlist                  │
+ │  x402:          never reached                              │
+ │  On-chain:      NO TRANSACTION (nothing to find)           │
+ │  Result:        BLOCKED 🚫  paymentCreated: false          │
+ │  Trust:         64 → 54                                    │
+ └────────────────────────────────────────────────────────────┘
+
+DEMO END ── Final state: 1 on-chain proof, 2 preventions ───────►
+```
+
+### The Hero Proof
+
+```
+Algorand TestNet Explorer
+
+  ✅ FOUND:   guardrail-check payment
+              From: <your wallet>
+              To:   <AVM_ADDRESS>
+              Asset: USDC (ASA 10458941)
+              Amount: 10,000 microUSDC ($0.01)
+
+  ❌ NOT FOUND: cold-email payment
+  ❌ NOT FOUND: premium-research payment
+
+  → These transactions do not exist because
+    Sentinel blocked them before payment creation.
+```
+
+---
+
+## Guardrail Risk Engine
+
+```
+Input Prompt
+     │
+     ▼
+┌────────────────────────────────────────────────────┐
+│              PATTERN MATCHING ENGINE               │
+│                                                    │
+│  instruction_override  ──── weight 32              │
+│  "ignore previous instructions..."                 │
+│                                                    │
+│  secret_extraction  ──────── weight 30             │
+│  "reveal system prompt / private key..."           │
+│                                                    │
+│  policy_bypass  ───────────── weight 26            │
+│  "bypass safety limits..."                         │
+│                                                    │
+│  tool_abuse  ─────────────── weight 24             │
+│  "purchase without approval..."                    │
+│                                                    │
+│  jailbreak_attempt  ──────── weight 22             │
+│  "developer mode / DAN mode..."                    │
+└────────────────────┬───────────────────────────────┘
+                     │
+                     ▼
+              Score = 12 + Σ(matched weights)
+                     │
+          ┌──────────┼──────────┐
+          │          │          │
+        < 40       40-70      ≥ 70
+          │          │          │
+         LOW      MEDIUM      HIGH
+          │          │          │
+        allow      review   block_or_review
+```
+
+Demo prompt triggers: `instruction_override` + `secret_extraction` + `tool_abuse`  
+→ Score: **98** · Risk: **HIGH** · Recommendation: **block_or_review**
 
 ---
 
@@ -111,70 +266,60 @@ type SentinelEvent = {
 
 ```
 sentinel-app/
-├── x402-demo-server/          # Hono resource server (TypeScript)
-│   ├── handlers/
-│   │   ├── sentinelState.ts   # Policy engine + event log
-│   │   ├── sentinelGuard.ts   # Middleware: runs before x402
-│   │   ├── guardrailCheck.ts  # Prompt risk scanner ($0.01)
-│   │   ├── coldEmail.ts       # Outbound generator ($0.02)
-│   │   ├── premiumResearch.ts # Blocked endpoint ($0.05)
-│   │   └── sentinelStatus.ts  # Status + reset + demo-mode
-│   ├── endpoints.config.ts    # x402 payment configuration
-│   └── index.ts               # Server entry + route registration
 │
-└── X402-Usecase/
-    └── projects/X402-Usecase/
-        └── src/
-            ├── components/
-            │   └── SentinelDashboard.tsx  # Main agent console UI
-            └── utils/
-                ├── sentinelApi.ts         # API client
-                └── weatherApi.ts          # x402 fetch wrapper
+├── x402-demo-server/                    # Hono Resource Server (TypeScript)
+│   │
+│   ├── handlers/
+│   │   ├── sentinelState.ts             # Policy engine, trust score, event log
+│   │   ├── sentinelGuard.ts             # Middleware: policy check before x402
+│   │   ├── guardrailCheck.ts            # Prompt risk scanner  — $0.01 USDC
+│   │   ├── coldEmail.ts                 # Outbound generator   — $0.02 USDC
+│   │   ├── premiumResearch.ts           # Blocked endpoint     — $0.05 USDC
+│   │   └── sentinelStatus.ts            # Status, reset, demo-mode handlers
+│   │
+│   ├── endpoints.config.ts              # x402 price + asset configuration
+│   ├── index.ts                         # App entry, middleware ordering
+│   └── .env.example                     # Required env vars (safe to commit)
+│
+└── X402-Usecase/projects/X402-Usecase/  # React + Vite Frontend
+    └── src/
+        ├── components/
+        │   └── SentinelDashboard.tsx    # Full agent console UI
+        ├── utils/
+        │   ├── sentinelApi.ts           # API client (reset, status, demo-mode)
+        │   ├── weatherApi.ts            # x402 fetch wrapper + signer
+        │   └── walletSession.ts         # Session clearing utilities
+        └── App.tsx                      # Wallet config (Lute browser extension)
 ```
 
 ---
 
-## Tech Stack
+## API Reference
 
-| Layer | Technology |
-|---|---|
-| **Protocol** | x402 (`@x402/hono`, `@x402/core`, `@x402/avm`) |
-| **Network** | Algorand TestNet |
-| **Settlement Asset** | USDC (ASA ID: `10458941`) |
-| **Facilitator** | GoPlausible (`https://facilitator.goplausible.xyz`) |
-| **Backend** | Hono + TypeScript + Node.js |
-| **Frontend** | React 18 + Vite + TypeScript |
-| **Wallet** | Lute Browser Extension via `@txnlab/use-wallet-react` v4 |
-| **Explorer** | Lora by AlgoKit (`lora.algokit.io/testnet`) |
+### Sentinel-Protected Endpoints
 
----
+| Method | Route | Price | Sentinel | Description |
+|:---:|:---|:---:|:---:|:---|
+| `POST` | `/guardrail-check` | $0.01 | ✅ Allowlisted | NLP prompt risk scanner — returns score, flags, recommendation |
+| `POST` | `/cold-email` | $0.02 | ✅ Allowlisted | Outbound email generator — blocked when budget exhausted |
+| `POST` | `/premium-research` | $0.05 | ❌ Blocked | Always denied — proves allowlist enforcement works |
 
-## API Endpoints
-
-### Sentinel-Protected (Sentinel Guard + x402)
+### x402-Only Endpoints
 
 | Method | Route | Price | Description |
-|---|---|---|---|
-| `POST` | `/guardrail-check` | $0.01 USDC | Prompt injection + risk scanner. Returns risk score, flags, recommendation. |
-| `POST` | `/cold-email` | $0.02 USDC | Outbound email generator. Blocked in safe demo mode (budget exceeded). |
-| `POST` | `/premium-research` | $0.05 USDC | Always blocked — not on allowlist. Proves allowlist enforcement. |
+|:---:|:---|:---:|:---|
+| `GET` | `/weather` | $0.005 | Weather data (original starter) |
+| `POST` | `/meme-generate` | $0.10 | AI meme generator |
 
-### x402 Only (No Sentinel)
-
-| Method | Route | Price | Description |
-|---|---|---|---|
-| `GET` | `/weather` | $0.005 USDC | Original starter endpoint |
-| `POST` | `/meme-generate` | $0.10 USDC | AI meme generator |
-
-### Public (No Payment)
+### Public Endpoints
 
 | Method | Route | Description |
-|---|---|---|
-| `GET` | `/health` | Liveness check |
-| `GET` | `/info` | Endpoint registry |
-| `GET` | `/sentinel/status` | Live policy state + event log |
-| `POST` | `/sentinel/reset` | Reset budget + trust score |
-| `POST` | `/sentinel/demo-mode` | Switch `safe` / `full` demo mode |
+|:---:|:---|:---|
+| `GET` | `/health` | Server liveness |
+| `GET` | `/info` | Registered endpoint list |
+| `GET` | `/sentinel/status` | Live policy state + full event log |
+| `POST` | `/sentinel/reset` | Reset budget and trust score |
+| `POST` | `/sentinel/demo-mode` | Switch `safe` / `full` mode |
 
 ---
 
@@ -182,148 +327,142 @@ sentinel-app/
 
 ### Prerequisites
 
-- Node.js 18+
-- [Lute Wallet](https://lute.app/) browser extension
-- Algorand TestNet wallet with:
-  - TestNet ALGO (from [TestNet Dispenser](https://bank.testnet.algorand.network/))
-  - TestNet USDC (ASA 10458941 — opt in via Lute, then get from a TestNet faucet)
+- **Node.js 18+**
+- **[Lute Wallet](https://lute.app/)** — browser extension (Chrome/Firefox)
+- **Algorand TestNet wallet** with:
+  - TestNet ALGO → [dispenser](https://bank.testnet.algorand.network/)
+  - TestNet USDC (ASA `10458941`) → opt-in via Lute, get from a faucet
 
 ### 1. Clone
 
 ```bash
-git clone https://github.com/HARJAPAN2005/sentinel.git
-cd sentinel/sentinel-app
+git clone https://github.com/HARJAPAN2005/Sentinel.git
+cd Sentinel/sentinel-app
 ```
 
-### 2. Backend Setup
+### 2. Backend
 
 ```bash
 cd x402-demo-server
 npm install
 cp .env.example .env
-```
-
-Edit `.env`:
-```env
-AVM_ADDRESS=YOUR_ALGORAND_TESTNET_ADDRESS
-FACILITATOR_URL=https://facilitator.goplausible.xyz
-PORT=4021
-```
-
-Start:
-```bash
+# Edit .env — set AVM_ADDRESS to your Algorand TestNet wallet
 npm start
 ```
 
-Verify:
 ```bash
+# Verify:
 curl http://localhost:4021/health
+# → {"status":"ok","service":"x402-hackathon-starter","uptime":...}
 ```
 
-### 3. Frontend Setup
+### 3. Frontend
 
 ```bash
 cd ../X402-Usecase/projects/X402-Usecase
 npm install
 cp .env.example .env.local
-```
-
-`.env.local` defaults are pre-configured for localhost. Start:
-
-```bash
 npm run dev
 ```
 
-Open `http://localhost:5173`
+Open **http://localhost:5173**
 
-### 4. Run the Demo
+### 4. Demo
 
-1. Click **Connect Wallet** → Choose **Lute** → Approve connection
-2. Select demo mode: **🔒 Safe** (1 settlement + 2 blocks) or **🚀 Full** (2 settlements + 1 block)
-3. Click **▶ Run Agent Task**
-4. Watch the policy evaluation, payment flow, and on-chain settlement in real time
-5. Click **View on Algorand Explorer ↗** on the settled step
+```
+1. Click "Connect Wallet" → Choose Lute → Approve
+2. Select mode: 🔒 Safe (1 settlement) or 🚀 Full (2 settlements)
+3. Click "▶ Run Agent Task"
+4. Watch: policy evaluation → 402 payment → on-chain settlement
+5. Click "View on Algorand Explorer ↗" on the settled step
+```
 
 ---
 
 ## Demo Modes
 
-| Mode | Budget | guardrail-check | cold-email | premium-research |
-|---|---|---|---|---|
-| 🔒 **Safe** | $0.015 | ✅ Settled ($0.01) | 🚫 Blocked (over budget) | 🚫 Blocked (not allowlisted) |
-| 🚀 **Full** | $0.040 | ✅ Settled ($0.01) | ✅ Settled ($0.02) | 🚫 Blocked (not allowlisted) |
+| Mode | Budget | `/guardrail-check` | `/cold-email` | `/premium-research` |
+|:---:|:---:|:---:|:---:|:---:|
+| 🔒 **Safe** | $0.015 | ✅ Settled | 🚫 Budget exceeded | 🚫 Not allowlisted |
+| 🚀 **Full** | $0.040 | ✅ Settled | ✅ Settled | 🚫 Not allowlisted |
+
+Switch modes live via the toggle in the dashboard header — resets budget + events automatically.
 
 ---
 
-## Guardrail Check — Risk Patterns
+## Tech Stack
 
-The `/guardrail-check` endpoint uses NLP pattern matching to score prompt injection risk:
-
-| Flag | Pattern | Weight |
-|---|---|---|
-| `instruction_override` | "ignore previous instructions" | 32 |
-| `secret_extraction` | "reveal system prompt / private key" | 30 |
-| `policy_bypass` | "bypass safety limits" | 26 |
-| `tool_abuse` | "purchase without approval" | 24 |
-| `jailbreak_attempt` | "developer mode / DAN mode" | 22 |
-
-Risk score ≥ 70 → `high` → `block_or_review`  
-Risk score ≥ 40 → `medium` → `review`  
-Risk score < 40 → `low` → `allow`
-
-The demo prompt intentionally triggers 3 flags (score: 98, risk: `high`).
+| Layer | Technology | Version |
+|:---|:---|:---:|
+| Protocol | `@x402/hono` · `@x402/core` · `@x402/avm` | latest |
+| Network | Algorand TestNet | — |
+| Settlement | USDC (ASA `10458941`) via GoPlausible | — |
+| Backend | Hono + TypeScript + Node.js | Hono 4.x |
+| Frontend | React 18 + Vite + TypeScript | Vite 5.x |
+| Wallet | Lute + `@txnlab/use-wallet-react` | v4.x |
+| Explorer | [Lora by AlgoKit](https://lora.algokit.io/testnet) | — |
 
 ---
 
-## The On-Chain Proof
+## Security Scope
 
-After running the demo:
+Sentinel enforces security at the **resource server middleware layer**:
 
-1. Note the `txId` from the guardrail-check receipt
-2. Open: `https://lora.algokit.io/testnet/transaction/<txId>`
-3. You will see: USDC transfer from your wallet to `AVM_ADDRESS`
-4. Search for `cold-email` or `premium-research` transactions: **none exist**
-
-The absence of transactions for blocked calls is the proof that Sentinel worked.
-
----
-
-## Mainnet Readiness
-
-Sentinel is production-ready with two configuration changes:
-
-```env
-# Switch from TestNet to MainNet
-VITE_ALGOD_SERVER=https://mainnet-api.algonode.cloud
-VITE_ALGOD_NETWORK=mainnet
-
-# Use MainNet USDC (ASA ID: 31566704)
-# Update endpoints.config.ts asset ID
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    SECURITY LAYERS                           │
+│                                                              │
+│  Protocol Layer     ── x402 + GoPlausible (replay, verify)  │
+│  ───────────────────────────────────────────────────────── │
+│  ▶ Sentinel Layer   ── Allowlist, budget, trust score       │
+│  ───────────────────────────────────────────────────────── │
+│  Application Layer  ── Business logic, rate limiting        │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-The policy engine, middleware ordering, and audit trail are identical in both environments.
+**What Sentinel guarantees:**
+- ✅ Blocked requests produce zero on-chain transactions
+- ✅ Budget enforcement is exact — no overdraft possible
+- ✅ Every decision (approved or blocked) is audited with full policyTrace
+- ✅ Trust score decays automatically on violations
+
+**What Sentinel does not claim:**
+- Cryptographic agent identity verification
+- Replay attack prevention (handled by x402/facilitator layer)
+- Full protocol security
 
 ---
 
-## Security Architecture
+## Mainnet Deployment
 
-Sentinel enforces security at the infrastructure layer, not the application layer:
+Two config changes for production:
 
-- **Pre-payment enforcement**: Policy runs in `sentinelGuard` middleware, which executes before `paymentMiddleware`. A blocked request cannot reach x402.
-- **No credit risk**: Denied requests consume zero USDC. Budget enforcement is exact.
-- **Audit immutability**: The on-chain record for approved payments is permanently verifiable. The absence of records for blocked payments is equally verifiable.
-- **Trust score isolation**: Each agent session carries an independent trust score. Policy tightens automatically as violations accumulate.
+```env
+# Backend .env
+AVM_ADDRESS=your_mainnet_address
+FACILITATOR_URL=https://facilitator.goplausible.xyz
 
-> **What Sentinel does not claim**: Full protocol security, replay attack prevention, or cryptographic agent identity. Those are facilitator and protocol-layer concerns. Sentinel's scope is spend policy enforcement and audit at the resource server layer.
+# Frontend .env.local
+VITE_ALGOD_SERVER=https://mainnet-api.algonode.cloud
+VITE_ALGOD_NETWORK=mainnet
+```
+
+Update `endpoints.config.ts` USDC asset ID from `10458941` (TestNet) → `31566704` (MainNet).
+
+All policy logic, middleware ordering, and audit trail are identical in both environments.
 
 ---
 
-## License
+## One-Line Pitch
 
-MIT — see [LICENSE](LICENSE)
+> *"Sentinel is the policy firewall for AI agent payments — it doesn't just let agents pay for APIs, it decides whether they're allowed to pay before a single wallet signature is ever requested."*
 
 ---
 
-## Built for HackNite Code Royale 2026 · x402 + Algorand Track
+<div align="center">
 
-> *"The policy and audit layer for x402 agent payments on Algorand."*
+**Built for HackNite Code Royale 2026 · x402 + Algorand Track**
+
+[View on Algorand TestNet](https://lora.algokit.io/testnet) · [x402 Protocol](https://x402.org) · [GoPlausible](https://goplausible.xyz)
+
+</div>
