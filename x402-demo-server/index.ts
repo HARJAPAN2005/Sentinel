@@ -36,6 +36,11 @@ import {
   handleCreatorEarningsRequest,
 } from './handlers/creator-content';
 import { handleMemeGenerateRequest, handleMemeStylesRequest } from './handlers/meme-generator';
+import { handleGuardrailCheckRequest } from './handlers/guardrailCheck';
+import { handleColdEmailRequest } from './handlers/coldEmail';
+import { handlePremiumResearchRequest } from './handlers/premiumResearch';
+import { sentinelGuard } from './handlers/sentinelGuard';
+import { handleSentinelResetRequest, handleSentinelStatusRequest, handleSentinelDemoModeRequest } from './handlers/sentinelStatus';
 
 // Import endpoint configuration
 import createPaymentConfig, { EndpointConfig } from './endpoints.config';
@@ -143,6 +148,10 @@ Object.entries(paymentConfig).forEach(([route, config]) => {
 });
 console.log();
 
+app.use('/guardrail-check', sentinelGuard('guardrail-check', 10000));
+app.use('/cold-email', sentinelGuard('cold-email', 20000));
+app.use('/premium-research', sentinelGuard('premium-research', 50000));
+
 app.use(paymentMiddleware(paymentConfig as any, x402Server));
 
 // ════════════════════════════════════════════════════════════════════
@@ -159,6 +168,11 @@ app.get('/weather', handleWeatherRequest);
 
 // Meme Generator - Pay $0.1 USDC (Payment Protected)
 app.post('/meme-generate', handleMemeGenerateRequest);
+
+// Sentinel - Agent payment firewall demo
+app.post('/guardrail-check', handleGuardrailCheckRequest);
+app.post('/cold-email', handleColdEmailRequest);
+app.post('/premium-research', handlePremiumResearchRequest);
 
 
 // Example 2: Analytics - Uncomment to enable
@@ -211,6 +225,10 @@ app.get('/info', (c) => {
  * Public endpoint - no payment required
  */
 app.get('/meme-styles', handleMemeStylesRequest);
+
+app.get('/sentinel/status', handleSentinelStatusRequest);
+app.post('/sentinel/reset', handleSentinelResetRequest);
+app.post('/sentinel/demo-mode', handleSentinelDemoModeRequest);
 
 // ════════════════════════════════════════════════════════════════════
 // ERROR HANDLING

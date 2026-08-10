@@ -3,7 +3,7 @@ import { useWallet } from '@txnlab/use-wallet-react'
 import { fetchWeatherWithPayment, formatWeatherData } from '../utils/weatherApi'
 
 const Weather: React.FC = () => {
-  const { activeAddress, signTransactions } = useWallet()
+  const { activeAddress, activeWallet, signTransactions } = useWallet()
   const [loading, setLoading] = useState(false)
   const [weatherData, setWeatherData] = useState<any>(null)
   const [error, setError] = useState<string>('')
@@ -34,6 +34,7 @@ const Weather: React.FC = () => {
       // Create a signer compatible with x402
       const signer = {
         address: activeAddress,
+        activeWallet,
         signTransactions: signTransactions,
       }
 

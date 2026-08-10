@@ -3,7 +3,10 @@ import { SnackbarProvider } from 'notistack'
 import { useState } from 'react'
 import Home from './Home'
 import MemeHome from './MemeHome'
+import ConnectWallet from './components/ConnectWallet'
+import SentinelDashboard from './components/SentinelDashboard'
 import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
+
 
 let supportedWallets: SupportedWallet[]
 if (import.meta.env.VITE_ALGOD_NETWORK === 'localnet') {
@@ -20,20 +23,17 @@ if (import.meta.env.VITE_ALGOD_NETWORK === 'localnet') {
   ]
 } else {
   supportedWallets = [
+    { id: WalletId.LUTE },
     { id: WalletId.DEFLY },
-    { id: WalletId.PERA },
-    { id: WalletId.EXODUS },
-    { id: WalletId.LUTE}
-    // If you are interested in WalletConnect v2 provider
-    // refer to https://github.com/TxnLab/use-wallet for detailed integration instructions
   ]
 }
 
-type TabType = 'weather' | 'meme'
+type TabType = 'sentinel' | 'weather' | 'meme'
 
 export default function App() {
   const algodConfig = getAlgodConfigFromViteEnvironment()
-  const [activeTab, setActiveTab] = useState<TabType>('weather')
+  const [activeTab, setActiveTab] = useState<TabType>('sentinel')
+  const [openWalletModal, setOpenWalletModal] = useState<boolean>(false)
 
   const walletManager = new WalletManager({
     wallets: supportedWallets,
@@ -61,6 +61,16 @@ export default function App() {
             <div className="max-w-7xl mx-auto px-4">
               <div className="flex space-x-1">
                 <button
+                  onClick={() => setActiveTab('sentinel')}
+                  className={`px-6 py-4 font-semibold transition-all ${
+                    activeTab === 'sentinel'
+                      ? 'text-slate-950 border-b-4 border-red-500 bg-red-50'
+                      : 'text-gray-600 hover:text-slate-950 hover:bg-gray-50'
+                  }`}
+                >
+                  Sentinel
+                </button>
+                <button
                   onClick={() => setActiveTab('weather')}
                   className={`px-6 py-4 font-semibold transition-all ${
                     activeTab === 'weather'
@@ -86,9 +96,11 @@ export default function App() {
 
           {/* Tab Content */}
           <div className="transition-all duration-300">
+            {activeTab === 'sentinel' && <SentinelDashboard onConnectWallet={() => setOpenWalletModal(true)} />}
             {activeTab === 'weather' && <Home />}
             {activeTab === 'meme' && <MemeHome />}
           </div>
+          <ConnectWallet openModal={openWalletModal} closeModal={() => setOpenWalletModal(false)} />
         </div>
       </WalletProvider>
     </SnackbarProvider>

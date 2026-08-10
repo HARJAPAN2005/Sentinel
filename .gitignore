@@ -1,1 +1,39 @@
-x402-demo-server/.env.meme-generator
+# Environment files — NEVER commit real keys
+.env
+.env.local
+.env.*.local
+.env.meme-generator
+*.env
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Temp
+tmp/
+.tmp/
