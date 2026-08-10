@@ -7,7 +7,6 @@ import ConnectWallet from './components/ConnectWallet'
 import SentinelDashboard from './components/SentinelDashboard'
 import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } from './utils/network/getAlgoClientConfigs'
 
-
 let supportedWallets: SupportedWallet[]
 if (import.meta.env.VITE_ALGOD_NETWORK === 'localnet') {
   const kmdConfig = getKmdConfigFromViteEnvironment()
@@ -55,51 +54,52 @@ export default function App() {
   return (
     <SnackbarProvider maxSnack={3}>
       <WalletProvider manager={walletManager}>
-        <div className="min-h-screen">
-          {/* Tab Navigation */}
-          <div className="bg-white shadow-md sticky top-0 z-50">
+        <div className="min-h-screen bg-ink-navy text-paper font-body">
+          {/* Neo-Brutalist Top Navigation Bar */}
+          <header className="border-b border-graphite/40 bg-ink-navy sticky top-0 z-50">
             <div className="max-w-7xl mx-auto px-4">
-              <div className="flex space-x-1">
+              <div className="flex space-x-2 py-2 font-ledger text-xs">
                 <button
                   onClick={() => setActiveTab('sentinel')}
-                  className={`px-6 py-4 font-semibold transition-all ${
+                  className={`px-4 py-2 border font-bold uppercase transition-all ${
                     activeTab === 'sentinel'
-                      ? 'text-slate-950 border-b-4 border-red-500 bg-red-50'
-                      : 'text-gray-600 hover:text-slate-950 hover:bg-gray-50'
+                      ? 'border-block-red text-paper bg-block-red/10'
+                      : 'border-graphite/30 text-graphite hover:text-paper hover:border-graphite'
                   }`}
                 >
-                  Sentinel
+                  🛡️ Sentinel Policy Engine
                 </button>
                 <button
                   onClick={() => setActiveTab('weather')}
-                  className={`px-6 py-4 font-semibold transition-all ${
+                  className={`px-4 py-2 border font-bold uppercase transition-all ${
                     activeTab === 'weather'
-                      ? 'text-teal-600 border-b-4 border-teal-600 bg-teal-50'
-                      : 'text-gray-600 hover:text-teal-600 hover:bg-gray-50'
+                      ? 'border-settle-blue text-paper bg-settle-blue/10'
+                      : 'border-graphite/30 text-graphite hover:text-paper hover:border-graphite'
                   }`}
                 >
                   🌤️ Weather Demo
                 </button>
                 <button
                   onClick={() => setActiveTab('meme')}
-                  className={`px-6 py-4 font-semibold transition-all ${
+                  className={`px-4 py-2 border font-bold uppercase transition-all ${
                     activeTab === 'meme'
-                      ? 'text-purple-600 border-b-4 border-purple-600 bg-purple-50'
-                      : 'text-gray-600 hover:text-purple-600 hover:bg-gray-50'
+                      ? 'border-brass text-paper bg-brass/10'
+                      : 'border-graphite/30 text-graphite hover:text-paper hover:border-graphite'
                   }`}
                 >
                   🎨 Meme Generator
                 </button>
               </div>
             </div>
-          </div>
+          </header>
 
-          {/* Tab Content */}
-          <div className="transition-all duration-300">
+          {/* Active Tab View */}
+          <div>
             {activeTab === 'sentinel' && <SentinelDashboard onConnectWallet={() => setOpenWalletModal(true)} />}
             {activeTab === 'weather' && <Home />}
             {activeTab === 'meme' && <MemeHome />}
           </div>
+
           <ConnectWallet openModal={openWalletModal} closeModal={() => setOpenWalletModal(false)} />
         </div>
       </WalletProvider>

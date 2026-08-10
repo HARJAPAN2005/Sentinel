@@ -2,61 +2,177 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Enhanced color grading for data displays */
-.mockup-code {
-  @apply bg-gradient-to-br from-slate-900 to-slate-800 !important;
+/* ───────────────────────────────────────────────────
+   SENTINEL NEO-BRUTALIST DESIGN TOKENS
+   ─────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    --ink-navy: #12161C;
+    --paper: #E7E4D8;
+    --brass: #C98A3E;
+    --settle-blue: #3C5A78;
+    --block-red: #A9412C;
+    --graphite: #6B6A5F;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    background-color: var(--ink-navy);
+    color: var(--paper);
+    margin: 0;
+  }
+
+  /* Scrollbar — thin, ink-colored, brutal */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--ink-navy);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--graphite);
+    border-radius: 0;
+  }
 }
 
-/* Improved code text styling */
-pre code {
-  @apply text-emerald-300 font-mono text-sm leading-relaxed;
+/* ───────────────────────────────────────────────────
+   NEO-BRUTALIST PRIMITIVES
+   No blur. No gradients. Hard shadows. Hairline rules.
+   ─────────────────────────────────────────────────── */
+
+@layer components {
+  /* Hairline row divider — the ledger's backbone */
+  .hairline {
+    @apply border-b;
+    border-color: rgba(107, 106, 95, 0.25);
+  }
+
+  /* Panel: ledger-paper surface with hard shadow */
+  .panel {
+    background-color: rgba(231, 228, 216, 0.06);
+    border: 1px solid rgba(107, 106, 95, 0.3);
+  }
+
+  /* Stamp base — shared between settled and blocked */
+  .stamp {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    line-height: 1;
+    padding: 3px 10px;
+    border-width: 3px;
+    border-style: solid;
+    /* Deliberately imperfect ink edges via double shadow */
+    box-shadow:
+      0 0 0 1px currentColor,
+      inset 0 0 6px rgba(0,0,0,0.08);
+    /* Subtle ink-bleed via slight sub-pixel font rendering trick */
+    -webkit-text-stroke: 0.3px currentColor;
+  }
+
+  .stamp-settled {
+    border-color: var(--settle-blue);
+    color: var(--settle-blue);
+    box-shadow:
+      0 0 0 1px rgba(60,90,120,0.3),
+      2px 2px 0 rgba(60,90,120,0.12);
+  }
+
+  .stamp-blocked {
+    border-color: var(--block-red);
+    color: var(--block-red);
+    box-shadow:
+      0 0 0 1px rgba(169,65,44,0.3),
+      2px 2px 0 rgba(169,65,44,0.12);
+  }
+
+  /* The mechanical depress button */
+  .depress-btn {
+    @apply font-display font-bold tracking-wide uppercase;
+    background-color: var(--paper);
+    color: var(--ink-navy);
+    border: 2px solid var(--ink-navy);
+    box-shadow: 4px 4px 0 0 var(--ink-navy);
+    transition: transform 80ms ease-out, box-shadow 80ms ease-out;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .depress-btn:active {
+    transform: translateY(3px) translateX(3px);
+    box-shadow: 1px 1px 0 0 var(--ink-navy);
+  }
+
+  .depress-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Breaker switch */
+  .breaker-switch {
+    position: relative;
+    width: 36px;
+    height: 18px;
+    border: 2px solid var(--graphite);
+    background: var(--ink-navy);
+    cursor: default;
+  }
+
+  .breaker-switch .breaker-handle {
+    position: absolute;
+    top: 1px;
+    width: 12px;
+    height: 12px;
+    border: 1px solid;
+    transition: left 150ms ease-out, background-color 150ms;
+  }
+
+  .breaker-switch.breaker-on .breaker-handle {
+    left: 18px;
+    background-color: var(--settle-blue);
+    border-color: var(--settle-blue);
+  }
+
+  .breaker-switch.breaker-off .breaker-handle {
+    left: 2px;
+    background-color: var(--block-red);
+    border-color: var(--block-red);
+  }
+
+  /* Explorer link — understated, ledger-appropriate */
+  .explorer-link {
+    @apply font-ledger text-xs;
+    color: var(--settle-blue);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-color: rgba(60,90,120,0.4);
+    transition: text-decoration-color 150ms;
+  }
+
+  .explorer-link:hover {
+    text-decoration-color: var(--settle-blue);
+  }
 }
 
-/* Alert styling with better contrast */
-.alert {
-  @apply rounded-lg shadow-md;
+/* ───────────────────────────────────────────────────
+   REDUCED MOTION — stamps appear instantly, no transforms
+   ─────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+  }
 }
-
-.alert-success {
-  @apply bg-gradient-to-r from-emerald-50 to-teal-50 border-l-4 border-emerald-500;
-}
-
-.alert-error {
-  @apply bg-gradient-to-r from-red-50 to-rose-50 border-l-4 border-red-500;
-}
-
-.alert-warning {
-  @apply bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500;
-}
-
-.alert-info {
-  @apply bg-gradient-to-r from-cyan-50 to-blue-50 border-l-4 border-cyan-500;
-}
-
-/* Enhanced card styling */
-.card {
-  @apply shadow-lg rounded-xl border border-gray-200/50;
-}
-
-/* Better visibility for data content */
-.card-body {
-  @apply p-6;
-}
-
-/* Text color improvements */
-.alert-success span {
-  @apply text-emerald-700 font-medium;
-}
-
-.alert-error span {
-  @apply text-red-700 font-medium;
-}
-
-.alert-warning span {
-  @apply text-amber-700 font-medium;
-}
-
-.alert-info span {
-  @apply text-cyan-700 font-medium;
-}
-
