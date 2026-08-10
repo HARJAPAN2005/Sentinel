@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: sentinel-backend
+    env: node
+    rootDir: sentinel-app/x402-demo-server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: AVM_ADDRESS
+        sync: false # Set this in the Render dashboard manually
+      - key: FACILITATOR_URL
+        value: https://facilitator.goplausible.xyz
