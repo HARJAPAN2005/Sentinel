@@ -1,7 +1,4 @@
 {
-  "framework": "vite",
-  "root": "sentinel-app/X402-Usecase/projects/X402-Usecase",
-  "installCommand": "npm install",
   "buildCommand": "cd sentinel-app/X402-Usecase/projects/X402-Usecase && npm install && npx vite build",
   "outputDirectory": "sentinel-app/X402-Usecase/projects/X402-Usecase/dist",
   "rewrites": [
