@@ -1,6 +1,6 @@
 {
-  "buildCommand": "cd sentinel-app/X402-Usecase/projects/X402-Usecase && npm install && npx vite build",
-  "outputDirectory": "sentinel-app/X402-Usecase/projects/X402-Usecase/dist",
+  "buildCommand": "cd X402-Usecase/projects/X402-Usecase && npm install && npx vite build",
+  "outputDirectory": "X402-Usecase/projects/X402-Usecase/dist",
   "rewrites": [
     {
       "source": "/(.*)",
