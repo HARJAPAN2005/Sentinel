@@ -11,6 +11,9 @@
 [![USDC](https://img.shields.io/badge/USDC-ASA%2010458941-2775CA?style=for-the-badge)](https://www.circle.com/en/usdc)
 [![GoPlausible](https://img.shields.io/badge/Facilitator-GoPlausible-FF6B35?style=for-the-badge)](https://goplausible.xyz)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+[![Backend: Live](https://img.shields.io/badge/Backend-Live%20on%20Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://sentinel-02kh.onrender.com/health)
+
+**🔗 Live Backend API:** https://sentinel-02kh.onrender.com
 
 </div>
 
